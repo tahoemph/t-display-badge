@@ -36,7 +36,7 @@
 // Commenting this line will automatically get the time zone, provided that the SSL certificate is valid.
 // Please pay attention to check the validity of the certificate.
 // The current configuration certificate is valid until April 16, 2024
-#define CUSTOM_TIMEZONE         "CST-8"
+#define CUSTOM_TIMEZONE         "America/Los_Angeles"
 
 
 esp_lcd_panel_io_handle_t io_handle = NULL;
@@ -269,7 +269,9 @@ void setup()
     SD_MMC.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0);
     inited_sd = SD_MMC.begin("/sdcard", true, true);
 
+    display_logo();
     wifi_test();
+    // wifi_setup();
 
     button1.attachClick([]() {
         pinMode(PIN_POWER_ON, OUTPUT);
@@ -307,14 +309,66 @@ void loop()
 
 LV_IMG_DECLARE(lilygo2_gif);
 
-void wifi_test(void)
+
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+void wifi_setup(void)
 {
-    String text;
+    Serial.println("configuring wifi");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+        Serial.println("Connection Failed! Rebooting...");
+        delay(5000);
+        ESP.restart();
+    }
+
+    ArduinoOTA
+        .onStart([]() {
+            String type;
+            if (ArduinoOTA.getCommand() == U_FLASH)
+                type = "sketch";
+            else // U_SPIFFS
+                type = "filesystem";
+
+            // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+            Serial.println("Start updating " + type);
+        })
+        .onEnd([]() {
+            Serial.println("\nEnd");
+        })
+        .onProgress([](unsigned int progress, unsigned int total) {
+            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        })
+        .onError([](ota_error_t error) {
+            Serial.printf("Error[%u]: ", error);
+            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+            else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        });
+
+    Serial.println("OTA");
+    ArduinoOTA.begin();
+    Serial.println("Ready");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+}
+
+void display_logo(void) {
     lv_obj_t *logo_img = lv_gif_create(lv_scr_act());
     lv_obj_center(logo_img);
     lv_gif_set_src(logo_img, &lilygo2_gif);
     LV_DELAY(1200);
     lv_obj_del(logo_img);
+}
+
+void wifi_test(void)
+{
+    String text;
 
     lv_obj_t *log_label = lv_label_create(lv_scr_act());
     lv_obj_align(log_label, LV_ALIGN_TOP_LEFT, 0, 0);
@@ -322,6 +376,7 @@ void wifi_test(void)
     lv_label_set_long_mode(log_label, LV_LABEL_LONG_SCROLL);
     lv_label_set_recolor(log_label, true);
 
+    Serial.println("going into scan");
     lv_label_set_text(log_label, "Scan WiFi");
     LV_DELAY(1);
     WiFi.mode(WIFI_STA);
@@ -348,14 +403,14 @@ void wifi_test(void)
 
     wifi_config_t current_conf;
     esp_wifi_get_config(WIFI_IF_STA, &current_conf);
-    if (strlen((const char *)current_conf.sta.ssid) == 0) {
+    // if (strlen((const char *)current_conf.sta.ssid) == 0) {
         // Just for testing.
         Serial.println("Use default WiFi SSID & PASSWORD!!");
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    } else {
-        Serial.println("Begin WiFi");
-        WiFi.begin();
-    }
+    // } else {
+    //     Serial.println("Begin WiFi");
+    //    WiFi.begin();
+    // }
 
     lv_label_set_text(log_label, text.c_str());
     Serial.println(text);
